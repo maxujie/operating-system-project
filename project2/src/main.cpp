@@ -9,8 +9,7 @@
 int numbers[NUM_SIZE];
 
 pthread_t threads[MAX_THREADS_SIZE];
-int threads_status[MAX_THREADS_SIZE];
-int threads_size = 0;
+int working_threads = 0;
 pthread_mutex_t threads_mutex;
 pthread_cond_t threads_cond;
 
@@ -82,57 +81,29 @@ void QSort(int st, int ed) {
   }
 }
 
-void CalcThread(int st, int ed, int tid) {
-  while (ed - st > BLOCK_SIZE) {
-    int mid = numbers[ed - 1];
-    int i = 0, j = 0;
-    while (i != ed - 1) {
-      if (numbers[i] < mid) {
-        int t = numbers[j];
-        numbers[j++] = numbers[i];
-        numbers[i] = t;
-      }
-      ++i;
+void CalcThread() {
+  pthread_mutex_lock(threads_mutex);
+  while (true) {
+    if () {
     }
-    numbers[ed - 1] = numbers[j];
-    numbers[j] = mid;
-    StackPush(j + 1, ed);
-    ed = j;
-  }
-  QSort(st, ed);
-
-  pthread_mutex_lock(&threads_mutex);
-  --threads_size;
-  threads_status[tid] = 0;
-  pthread_mutex_unlock(&threads_mutex);
-
-  pthread_cond_broadcast(&threads_cond);
-  pthread_exit(NULL);
-}
-
-int main(int argc, char *argv[]) {
-  while (threads_size > 0 || stack_size > 0) {
-    if (threads_size < MAX_THREADS_SIZE && stack_size > 0) {
-      pthread_mutex_lock(&threads_mutex);
-      for (int i = 0; i != MAX_THREADS_SIZE; ++i) {
-        if (threads_status[i] == 0) {
-          threads_status[i] = 1;
-          pthread_create(&threads[i], NULL, (void *)CalcThread, NULL);
+    while (ed - st > BLOCK_SIZE) {
+      int mid = numbers[ed - 1];
+      int i = 0, j = 0;
+      while (i != ed - 1) {
+        if (numbers[i] < mid) {
+          int t = numbers[j];
+          numbers[j++] = numbers[i];
+          numbers[i] = t;
         }
+        ++i;
       }
-      pthread_mutex_unlock(&threads_mutex);
-    } else if (stack_size > 0) {
-      while (threads_size >= MAX_THREADS_SIZE) {
-        pthread_cond_wait(&threads_cond, &threads_mutex);
-      }
-      ++threads_size;
-      for (int i = 0; i != MAX_THREADS_SIZE; ++i) {
-        if (threads_status[i] == 0) {
-          threads_status[i] = 1;
-          pthread_create(&threads[i], NULL, (void *)CalcThread, NULL);
-        }
-      }
-      pthread_mutex_unlock(&threads_mutex);
+      numbers[ed - 1] = numbers[j];
+      numbers[j] = mid;
+      StackPush(j + 1, ed);
+      ed = j;
     }
+    QSort(st, ed);
   }
 }
+
+int main(int argc, char *argv[]) {}
