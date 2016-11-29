@@ -1,6 +1,6 @@
 SRC_PATH = src
 INCLUDE_PATH = include
-CXX_FLAGS = --std=c++11
+CXX_FLAGS = --std=c++11 -lpthread
 OBJECTS = main.o
 TARGET = main
 
