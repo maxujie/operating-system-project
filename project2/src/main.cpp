@@ -96,6 +96,18 @@ void QSort(int st, int ed) {
   }
 }
 
+void InsertSort(int st, int ed) {
+  for (int i = 1; i != ed; ++i) {
+    int j = i;
+    while (j > 0 && numbers[j] < numbers[j - 1]) {
+      int t = numbers[j];
+      numbers[j] = numbers[j - 1];
+      numbers[j - 1] = t;
+      --j;
+    }
+  }
+}
+
 void CalcThread() {
   int st, ed;
   while (true) {
@@ -142,7 +154,7 @@ void CalcThread() {
     pthread_mutex_lock(&queue_mutex);
     --working_threads;
     pthread_mutex_unlock(&queue_mutex);
-    QSort(st, ed);
+    InsertSort(st, ed);
   }
 }
 
