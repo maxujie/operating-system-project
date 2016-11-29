@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#define NUM_SIZE 10000
+#include <random>
+#define NUM_SIZE 200000
 #define STACK_SIZE 1000
-#define MAX_THREADS_SIZE 5
+#define MAX_THREADS_SIZE 20
 #define BLOCK_SIZE 1000
 
 int numbers[NUM_SIZE];
@@ -125,11 +126,18 @@ void CalcThread() {
         break;
       } else if (working_threads == 0) {
         pthread_mutex_unlock(&queue_mutex);
+        printf("quit\n");
+        pthread_cond_broadcast(&queue_cond);
         return;
       }
       pthread_mutex_unlock(&queue_mutex);
     }
     while (ed - st > BLOCK_SIZE) {
+      int k = rand() % (ed - st);
+      int t;
+      t = numbers[ed - 1];
+      numbers[ed - 1] = numbers[st + k];
+      numbers[st + k] = t;
       int mid = numbers[ed - 1];
       int i = 0, j = 0;
       while (i != ed - 1) {
@@ -143,13 +151,25 @@ void CalcThread() {
       numbers[ed - 1] = numbers[j];
       numbers[j] = mid;
 
-      if (ed - (j + 1) > 1) {
-        pthread_mutex_lock(&queue_mutex);
-        Push(j + 1, ed);
-        pthread_mutex_unlock(&queue_mutex);
-        pthread_cond_broadcast(&queue_cond);
+      int next_st, next_ed, queue_st, queue_ed;
+      if (ed - j > j - st) {
+        next_st = st;
+        next_ed = j;
+        queue_st = j + 1;
+        queue_ed = ed;
+      } else {
+        next_st = j + 1;
+        next_ed = ed;
+        queue_st = st;
+        queue_ed = j;
       }
-      ed = j;
+      pthread_mutex_lock(&queue_mutex);
+      Push(queue_st, queue_ed);
+      pthread_mutex_unlock(&queue_mutex);
+      pthread_cond_broadcast(&queue_cond);
+
+      st = next_st;
+      ed = next_ed;
     }
     pthread_mutex_lock(&queue_mutex);
     --working_threads;
