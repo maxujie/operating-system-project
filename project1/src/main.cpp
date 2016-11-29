@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #define MAX_CUSTOMER_NUM 100
 #define MAX_CLERK_NUM 10
@@ -11,9 +12,13 @@
 
 enum ClerkStatus { CLERK_WAITING, SERVING };
 
-clock_t START_TIME;
+timeval START_TIME;
 
-int Time() { return int(double(clock() - START_TIME) / 1000 + 0.5); }
+int Time() {
+  timeval t;
+  gettimeofday(&t, NULL);
+  return t.tv_sec - START_TIME.tv_sec;
+}
 void Sleep(int n) { usleep(n * 1e6); }
 
 struct Customer {
@@ -112,7 +117,7 @@ void ClerkThread(Clerk *clerk) {
       }
     }
     Customer *customer = &Customers[call_customer];
-    printf("clerk %d serve customer %d\n", clerk->id, customer->id);
+    printf("clerk %d is calling ticket %d\n", clerk->id, customer->ticket);
     pthread_mutex_lock(&customer->mutex);
     customer->clerk_id = clerk->id;
     pthread_cond_broadcast(&customer->cond);
@@ -130,27 +135,27 @@ void CustomerThread(Customer *customer) {
   /* customer start */
   Sleep(customer->enter_time);
 
-  printf("Customer %d enter bank at %d\n", customer->id, Time());
+  printf("customer %d enter bank at %d\n", customer->id, Time());
 
   /* enter bank */
   pthread_mutex_lock(&customer->mutex);
   customer->ticket = GetTicket();
   pthread_mutex_unlock(&customer->mutex);
 
-  printf("Customer %d get ticket %d\n", customer->id, customer->ticket);
+  printf("customer %d get ticket %d\n", customer->id, customer->ticket);
 
   sem_post(&waiting_customers);
+
   /* start waiting */
-  printf("Customer %d waiting\n", customer->id);
+  printf("customer %d is waiting\n", customer->id);
   do {
     pthread_cond_wait(&customer->cond, &customer->mutex);
   } while (customer->clerk_id == -1);
   pthread_mutex_unlock(&customer->mutex);
-  printf("Customer %d waiting done, clerk_id = %d\n", customer->id,
-         customer->clerk_id);
 
   /* being served */
   Clerk *clerk = &Clerks[customer->clerk_id];
+  printf("customer %d is called by clerk %d\n", customer->id, clerk->id);
 
   pthread_mutex_lock(&clerk->mutex);
   clerk->status = SERVING;
@@ -169,7 +174,7 @@ void CustomerThread(Customer *customer) {
 
   pthread_mutex_unlock(&clerk->mutex);
 
-  printf("customer %d exit bank\n", customer->id);
+  printf("customer %d finish and leave bank at %d\n", customer->id, Time());
   pthread_exit(0);
 }
 
@@ -192,7 +197,7 @@ int main(const int argc, const char *argv[]) {
   pthread_mutex_init(&ticket_mutex, NULL);
 
   /* bank start */
-  START_TIME = clock();
+  gettimeofday(&START_TIME, NULL);
 
   for (int i = 0; i != clerk_num; ++i) {
     pthread_create(&ClerkThreads[i], NULL, (void *(*)(void *))ClerkThread,
