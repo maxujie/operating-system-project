@@ -206,13 +206,13 @@ int main(const int argc, const char *argv[]) {
   // 开始营业
   gettimeofday(&START_TIME, NULL);
 
-  // 启动所有柜员
+  // 启动所有柜员线程
   for (int i = 0; i != clerk_num; ++i) {
     pthread_create(&ClerkThreads[i], NULL, (void *(*)(void *))ClerkThread,
                    &Clerks[i]);
   }
 
-  // 启动所有顾客
+  // 启动所有顾客线程
   for (int i = 0; i != customer_num; ++i) {
     pthread_create(&CustomerThreads[i], NULL, (void *(*)(void *))CustomerThread,
                    &Customers[i]);
