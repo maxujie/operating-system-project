@@ -95,7 +95,7 @@ void ClerkThread(Clerk *clerk) {
       pthread_mutex_unlock(&customer->mutex);
     }
     Customer *customer = &Customers[call_customer];  // 决定叫这个顾客
-    printf("clerk %d is calling ticket %d\n", clerk->id, customer->ticket);
+    printf("clerk %d is calling ticket %d at %d\n", clerk->id, customer->ticket, Time());
 
     pthread_mutex_lock(&customer->mutex);
     customer->clerk_id = clerk->id;  // 将该顾客的服务柜员设置为自己
