@@ -85,12 +85,14 @@ void ClerkThread(Clerk *clerk) {
     int call_customer = -1;
     for (int i = 0; i != customer_num; ++i) {  // 检查列表中的所有顾客
       Customer *customer = &Customers[i];
+      pthread_mutex_lock(&customer->mutex);
       if (customer->ticket >= 0   // 如果顾客拿到了号
         && customer->clerk_id == -1  // 并且还没有被任何柜员叫过
         && customer->ticket < min_uncalled_ticket) {  // 并且其拿到的号码尽可能小
         min_uncalled_ticket = customer->ticket;
         call_customer = i;
       }
+      pthread_mutex_unlock(&customer->mutex);
     }
     Customer *customer = &Customers[call_customer];  // 决定叫这个顾客
     printf("clerk %d is calling ticket %d\n", clerk->id, customer->ticket);
@@ -124,9 +126,9 @@ void CustomerThread(Customer *customer) {
 
   /* start waiting */
   printf("customer %d is waiting\n", customer->id);
-  do {
+  while (customer->clerk_id == -1) {
     pthread_cond_wait(&customer->cond, &customer->mutex);  // 等待柜员叫自己的号
-  } while (customer->clerk_id == -1);
+  }
   pthread_mutex_unlock(&customer->mutex);
 
   /* being served */
@@ -185,13 +187,15 @@ void WriteOutputFile(const char *filepath) {
 
 
 int main(const int argc, const char *argv[]) {
-  if (argc != 4) {
+  if (argc != 5) {
     printf("invalid arguments\nUsage: ./main CLERK_NUM INPUT_FILE OUTPUT_FILE\n");
   }
 
   // 读取输入
+  int bank_run_time;
   sscanf(argv[1], "%d", &clerk_num);
-  ReadInputFile(argv[2]);
+  sscanf(argv[2], "%d", &bank_run_time);
+  ReadInputFile(argv[3]);
   InitClerk();
   printf("clerk num = %d, customer num = %d\n", clerk_num, customer_num);
 
@@ -214,6 +218,6 @@ int main(const int argc, const char *argv[]) {
                    &Customers[i]);
   }
 
-  Sleep(20);  // 等待一段时间（需要大于最后一个顾客离开的时间）
-  WriteOutputFile(argv[3]);  // 输出结果
+  Sleep(bank_run_time);  // 等待一段时间（需要大于最后一个顾客离开的时间）
+  WriteOutputFile(argv[4]);  // 输出结果
 }
