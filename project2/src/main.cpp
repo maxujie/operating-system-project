@@ -2,50 +2,45 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <random>
-#define NUM_SIZE 200000
-#define STACK_SIZE 1000
-#define MAX_THREADS_SIZE 20
+#define DATA_NUM 1000000
+#define QUEUE_SIZE 100000
 #define BLOCK_SIZE 1000
+#define MAX_THREADS_NUM 20
 
-int numbers[NUM_SIZE];
+// Data
 
-pthread_t threads[MAX_THREADS_SIZE];
-int working_threads = 0;
+int numbers[DATA_NUM];
 
-// a simple queue implements with 2 stacks
+// Thread Manager
+
+struct SortParam {
+  int st;
+  int ed;
+};
+
+SortParam task_queue[QUEUE_SIZE];
 int queue_size = 0;
-int in_stack_st[STACK_SIZE];
-int in_stack_ed[STACK_SIZE];
-int in_stack_size = 0;
-int out_stack_st[STACK_SIZE];
-int out_stack_ed[STACK_SIZE];
-int out_stack_size = 0;
-pthread_mutex_t queue_mutex;
-pthread_cond_t queue_cond;
+int queue_tail = 0;
+int queue_head = 0;
 
 void Push(int st, int ed) {
-  in_stack_st[in_stack_size] = st;
-  in_stack_ed[in_stack_size] = ed;
-  ++in_stack_size;
+  task_queue[queue_tail].st = st;
+  task_queue[queue_tail].ed = ed;
+  ++queue_tail;
   ++queue_size;
-  printf("queue size = %d, push(%d, %d)\n", queue_size, st, ed);
+}
+SortParam *Pop() {
+  SortParam *ret = &task_queue[queue_head++];
+  --queue_size;
+  return ret;
 }
 
-void Pop(int &st, int &ed) {
-  if (out_stack_size == 0) {
-    for (int i = 0; i != in_stack_size; ++i) {
-      out_stack_st[i] = in_stack_st[in_stack_size - i - 1];
-      out_stack_ed[i] = in_stack_ed[in_stack_size - i - 1];
-    }
-    out_stack_size = in_stack_size;
-    in_stack_size = 0;
-  }
-  --queue_size;
-  --out_stack_size;
-  st = out_stack_st[out_stack_size];
-  ed = out_stack_ed[out_stack_size];
-  printf("queue size = %d, pop(%d, %d)\n", queue_size, st, ed);
-}
+pthread_t thread_manager;
+pthread_mutex_t mutex;
+pthread_cond_t thread_manager_cond;
+int working_threads = 0;
+
+// Functions For Loading Data
 
 void ReadFile(char *filepath) {
   FILE *fin;
@@ -54,7 +49,7 @@ void ReadFile(char *filepath) {
     exit(0);
   }
 
-  for (int i = 0; i != NUM_SIZE; ++i) {
+  for (int i = 0; i != DATA_NUM; ++i) {
     fscanf(fin, "%d", &numbers[i]);
   }
 
@@ -68,7 +63,7 @@ void WriteFile(char *filepath) {
     exit(0);
   }
 
-  for (int i = 0; i != NUM_SIZE; ++i) {
+  for (int i = 0; i != DATA_NUM; ++i) {
     fprintf(fout, "%d\n", numbers[i]);
   }
 
@@ -109,72 +104,62 @@ void InsertSort(int st, int ed) {
   }
 }
 
-void CalcThread() {
-  int st, ed;
-  while (true) {
-    while (true) { // get next task
-      if (queue_size == 0 && working_threads > 0) {
-        pthread_cond_wait(&queue_cond, &queue_mutex);
-      } else {
-        pthread_mutex_lock(&queue_mutex);
-      }
-
-      if (queue_size > 0) {
-        Pop(st, ed);
-        ++working_threads;
-        pthread_mutex_unlock(&queue_mutex);
-        break;
-      } else if (working_threads == 0) {
-        pthread_mutex_unlock(&queue_mutex);
-        printf("quit\n");
-        pthread_cond_broadcast(&queue_cond);
-        return;
-      }
-      pthread_mutex_unlock(&queue_mutex);
-    }
-    while (ed - st > BLOCK_SIZE) {
-      int k = rand() % (ed - st);
-      int t;
-      t = numbers[ed - 1];
-      numbers[ed - 1] = numbers[st + k];
-      numbers[st + k] = t;
-      int mid = numbers[ed - 1];
-      int i = 0, j = 0;
-      while (i != ed - 1) {
-        if (numbers[i] < mid) {
-          int t = numbers[j];
-          numbers[j++] = numbers[i];
-          numbers[i] = t;
-        }
-        ++i;
-      }
-      numbers[ed - 1] = numbers[j];
-      numbers[j] = mid;
-
-      int next_st, next_ed, queue_st, queue_ed;
-      if (ed - j > j - st) {
-        next_st = st;
-        next_ed = j;
-        queue_st = j + 1;
-        queue_ed = ed;
-      } else {
-        next_st = j + 1;
-        next_ed = ed;
-        queue_st = st;
-        queue_ed = j;
-      }
-      pthread_mutex_lock(&queue_mutex);
-      Push(queue_st, queue_ed);
-      pthread_mutex_unlock(&queue_mutex);
-      pthread_cond_broadcast(&queue_cond);
-
-      st = next_st;
-      ed = next_ed;
-    }
-    pthread_mutex_lock(&queue_mutex);
-    --working_threads;
-    pthread_mutex_unlock(&queue_mutex);
+void CalcThread(void *argv) {
+  SortParam *param = (SortParam *)argv;
+  int st = param->st;
+  int ed = param->ed;
+  if (ed - st < BLOCK_SIZE) { // do not need quick sort
     InsertSort(st, ed);
+  } else if (ed - st > BLOCK_SIZE) {
+    // random pick an element as middle value
+    int rand_ind = st + rand() % (ed - st);
+    int mid = numbers[rand_ind];
+    numbers[rand_ind] = numbers[ed - 1];
+
+    int i = 0, j = 0;
+    while (i != ed - 1) {
+      if (numbers[i] < mid) {
+        int t = numbers[j];
+        numbers[j++] = numbers[i];
+        numbers[i] = t;
+      }
+      ++i;
+    }
+    numbers[ed - 1] = numbers[j];
+    numbers[j] = mid;
+
+    int st1 = st, ed1 = j;
+    int st2 = j + 1, ed2 = ed;
+    pthread_mutex_lock(&mutex);
+    Push(st1, ed1);
+    Push(st2, ed2);
+    pthread_mutex_unlock(&mutex);
+  }
+  pthread_mutex_lock(&mutex);
+  --working_threads;
+  pthread_mutex_unlock(&mutex);
+  pthread_cond_broadcast(&thread_manager_cond);
+}
+
+void ThreadManager() {
+  while (true) {
+    pthread_mutex_lock(&mutex); // check status
+    if (queue_size > 0 && working_threads < MAX_THREADS_NUM) {
+      ++working_threads;
+      pthread_t thread;
+      SortParam *task = Pop();
+      printf("new task (%d, %d), working_threads = %d, queue_size = %d\n",
+             task->st, task->ed, working_threads, queue_size);
+      pthread_create(&thread, NULL, (void *(*)(void *))CalcThread, task);
+      pthread_mutex_unlock(&mutex);
+    } else if (queue_size == 0 && working_threads == 0) {
+      pthread_mutex_unlock(&mutex);
+      return;
+    } else {
+      pthread_mutex_unlock(&mutex);
+      pthread_cond_wait(&thread_manager_cond, &mutex);
+      pthread_mutex_unlock(&mutex);
+    }
   }
 }
 
@@ -187,21 +172,16 @@ int main(int argc, char *argv[]) {
   ReadFile(argv[1]);
 
   // initialize
-  pthread_mutex_init(&queue_mutex, NULL);
-  pthread_cond_init(&queue_cond, NULL);
+
+  pthread_mutex_init(&mutex, NULL);
+  pthread_cond_init(&thread_manager_cond, NULL);
+  Push(0, DATA_NUM);
 
   // create threads
-  for (int i = 0; i != MAX_THREADS_SIZE; ++i) {
-    pthread_create(&threads[i], NULL, (void *(*)(void *))CalcThread, NULL);
-  }
-
-  Push(0, NUM_SIZE);
-  pthread_cond_broadcast(&queue_cond);
+  pthread_create(&thread_manager, NULL, (void *(*)(void *))ThreadManager, NULL);
 
   // waiting threads done
-  for (int i = 0; i != MAX_THREADS_SIZE; ++i) {
-    pthread_join(threads[i], NULL);
-  }
+  pthread_join(thread_manager, NULL);
 
   // output
   WriteFile(argv[2]);
